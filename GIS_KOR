@@ -1,0 +1,131 @@
+library(ggmap)
+library(ggplot2)
+library(raster)
+library(rgeos)
+library(maptools)
+library(sp)
+library(sf)
+library(rgdal)
+library(ggfortify)
+library(tidyverse)
+
+# 시군구 기준 좌표를 시각화하기
+map_sf <- st_read("D:/codelab2/SIG_20220324/sig.shp") # 지리 정보 데이터셋을 sf 객체로 읽기
+map_sf_transformed <- st_transform(map_sf, "+proj=longlat +datum=WGS84") # 좌표 변환
+ggplot() +
+  geom_sf(data = map_sf_transformed)
+
+# 시군구 기준 좌표 테이블
+map_sf <- st_read("D:/codelab2/SIG_20220324/sig.shp")
+map_transformed <- st_transform(map_sf, "+proj=longlat +datum=WGS84")
+map_transformed_valid <- st_make_valid(map_transformed)
+map_centroids <- st_centroid(map_transformed_valid)
+centroid_coords <- st_coordinates(map_centroids)
+coords_df <- data.frame(longitude = centroid_coords[, 1], latitude = centroid_coords[, 2])
+map_df <- cbind(st_drop_geometry(map_transformed_valid), coords_df)
+
+# 광역시, 도 기준 좌표를 시각화하기
+map_sf1 <- st_read("D:/codelab2/CTPRVN_202302/ctp_rvn.shp") # 지리 정보 데이터셋을 sf 객체로 읽기
+st_crs(map_sf1)
+map_sf1 <- st_set_crs(map_sf1, 5179) # 5179는 대한민국의 도/광역시를 나타내는 데 사용되는 좌표계입니다.
+map_sf1_transformed <- st_transform(map_sf1, "+proj=longlat +datum=WGS84") # 좌표 변환
+new_map1 <- fortify(map_sf1_transformed, region = 'ADM_CD')
+ggplot() +
+  geom_sf(data = map_sf1_transformed)
+
+
+# 광역시/도 기준 좌표 테이블
+map_sf1 <- st_read("D:/codelab2/CTPRVN_202302/ctp_rvn.shp")
+map_sf1 <- st_set_crs(map_sf1, 5179)
+map_transformed1 <- st_transform(map_sf1, "+proj=longlat +datum=WGS84")
+map_transformed_valid1 <- st_make_valid(map_transformed1)
+map_centroids1 <- st_centroid(map_transformed_valid1)
+centroid_coords1 <- st_coordinates(map_centroids1)
+coords_df1 <- data.frame(longitude = centroid_coords1[, 1], latitude = centroid_coords1[, 2])
+map_df1 <- cbind(st_drop_geometry(map_transformed_valid1), coords_df1)
+
+
+1) 예제 1_이혼율
+# 광역시/도 시각화(이혼율)
+# 주의할 점은, 데이터와 map 좌표의 matching key가 일정해야 한다는 것.
+
+marriage_divorce_data<-read_excel("D:/codelab2/dataset1.xlsx")
+marriage_divorce_data$percent <- (marriage_divorce_data$divorces / marriage_divorce_data$marriages) * 100
+names(map_df1)[names(map_df1) == "CTP_ENG_NM"] <- "region"
+map_merged <- left_join(map_df1, marriage_divorce_data, by = "region")
+ggplot() +
+  geom_sf(data = map_transformed_valid1, fill = "lightgrey", color = "black", size = 0.2) +
+  geom_point(data = map_merged, aes(x = longitude, y = latitude, size = percent, color = percent), alpha = 0.8) +
+  scale_color_gradient(low = "blue", high = "red") +
+  scale_size_continuous(range = c(1, 10)) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  labs(title = "South Korea Divorce Rate by Region",
+       x = "Longitude",
+       y = "Latitude",
+       size = "Divorce Rate (%)",
+       color = "Divorce Rate (%)")
+
+
+# 광역시/도 시각화(이혼율)을 지도 경계선을 따라 그리는 방법
+map_sf1 <- st_read("D:/codelab2/CTPRVN_202302/ctp_rvn.shp") # 지리 정보 데이터셋을 sf 객체로 읽기
+st_crs(map_sf1)
+map_sf1 <- st_set_crs(map_sf1, 5179) # 5179는 대한민국의 도/광역시를 나타내는 데 사용되는 좌표계입니다.
+map_sf1_transformed <- st_transform(map_sf1, "+proj=longlat +datum=WGS84") # 좌표 변환
+new_map1 <- fortify(map_sf1_transformed, region = 'ADM_CD')
+map_df1<-new_map1
+marriage_divorce_data<-read_excel("D:/codelab2/dataset1.xlsx")
+marriage_divorce_data$percent <- (marriage_divorce_data$divorces / marriage_divorce_data$marriages) * 100
+names(marriage_divorce_data)[names(marriage_divorce_data) == "region"] <- "CTP_ENG_NM"
+map_merged1 <- left_join(map_df1, marriage_divorce_data, by = "CTP_ENG_NM")
+ggplot() +
+  geom_sf(data = map_merged1, aes(fill = percent), color = "black", size = 0.2) +
+  scale_fill_gradient(low = "blue", high = "red") +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  labs(title = "Divorce rate by region",
+       x = "Longitude",
+       y = "Latitude",
+       fill = "Divorce Rate (%)")
+
+
+2) 예제 2_노년층 인구비율
+
+# 시군구 시각화(노년층 인구비율) 시 원모양으로 시각화하는 방법
+aging_data<-read_excel("D:/codelab2/population.xlsx")
+aging_data$percent <- (aging_data$aging / aging_data$total) * 100
+aging_data <- aging_data %>% mutate(SIG_CD = as.character(SIG_CD))
+map_df <- map_df %>% mutate(SIG_CD = as.character(SIG_CD))
+map_merged <- left_join(map_df, aging_data, by = "SIG_CD")
+ggplot() +
+  geom_sf(data = map_transformed_valid, fill = "lightgrey", color = "black", size = 0.2) +
+  geom_point(data = map_merged, aes(x = longitude, y = latitude, size = percent, color = percent), alpha = 0.8) +
+  scale_color_gradient(low = "blue", high = "red") +
+  scale_size_continuous(range = c(1, 10)) +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  labs(title = "Aging people rate by region",
+       x = "Longitude",
+       y = "Latitude",
+       size = "Aging population Rate (%)",
+       color = "Aging population Rate (%)")
+
+
+# 시군구 시각화(노년층 인구비율) 경계선을 따라 색깔을 칠하는 방법
+map_sf <- st_read("D:/codelab2/SIG_20220324/sig.shp") # 지리 정보 데이터셋을 sf 객체로 읽기
+map_sf_transformed <- st_transform(map_sf, "+proj=longlat +datum=WGS84") # 좌표 변환
+map_df<-map_sf_transformed
+aging_data<-read_excel("D:/codelab2/population.xlsx")
+aging_data$percent <- (aging_data$aging / aging_data$total) * 100
+aging_data <- aging_data %>% mutate(SIG_CD = as.character(SIG_CD))
+map_df <- map_df %>% mutate(SIG_CD = as.character(SIG_CD))
+map_merged <- left_join(map_df, aging_data, by = "SIG_CD")
+ggplot() +
+  geom_sf(data = map_merged, aes(fill = percent), color = "black", size = 0.2) +
+  scale_fill_gradient(low = "blue", high = "red") +
+  theme_minimal() +
+  theme(legend.position = "bottom") +
+  labs(title = "Aging people rate by region",
+       x = "Longitude",
+       y = "Latitude",
+       fill = "Aging Rate (%)")
